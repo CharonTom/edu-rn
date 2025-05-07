@@ -1,16 +1,25 @@
 // QrScannerScreen.tsx
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { CameraType, CameraView, useCameraPermissions } from "expo-camera"; // on importe la nouvelle API :contentReference[oaicite:0]{index=0}
+import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Button,
+  Platform,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+
+const BASE_URL =
+  Platform.OS === "android"
+    ? "http://10.26.128.192:8000/api"
+    : "http://localhost:8000/api";
+
+// On définit ici l’URL fixe de signin
+const SIGNIN_URL = `${BASE_URL}/signin`;
 
 type Props = { onSignOut: () => void };
 
@@ -20,41 +29,46 @@ export default function QrScannerScreen({ onSignOut }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
 
-  // 1) Récupère le token stocké
+  // Récupère le token stocké
   useEffect(() => {
     AsyncStorage.getItem("userToken").then(setToken);
   }, []);
 
-  // 2) Demande la permission caméra
+  // Demande la permission caméra
   useEffect(() => {
     if (!permission) return;
     if (!permission.granted) requestPermission();
   }, [permission]);
 
-  const handleScanned = async (data: string) => {
+  const handleScanned = async () => {
     if (scanned || !token) return;
     setScanned(true);
 
     try {
-      const res = await fetch(data, {
+      // POST explicite vers /signin
+      const res = await fetch(SIGNIN_URL, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       });
+
       const json = await res.json();
-      if (res.ok) Alert.alert("Succès", json.message);
-      else Alert.alert("Erreur", json.message || "Échec du scan");
+      if (res.ok) {
+        Alert.alert("Succès", json.message);
+      } else {
+        Alert.alert("Erreur", json.message || "Échec du scan");
+      }
     } catch (e: any) {
       Alert.alert("Erreur réseau", e.message);
     } finally {
-      // réautorise un nouveau scan après 3 s
+      // Réautoriser un nouveau scan après 3 s
       setTimeout(() => setScanned(false), 3000);
     }
   };
 
-  // Écrans de chargement/permission
+  // États de chargement / permission
   if (!permission) {
     return (
       <View style={styles.center}>
@@ -78,16 +92,15 @@ export default function QrScannerScreen({ onSignOut }: Props) {
     );
   }
 
-  // 3) Affiche le scanner QR
+  // Affichage du scanner
   return (
     <View style={styles.container}>
       <CameraView
         style={styles.camera}
         facing={facing}
-        barcodeScannerSettings={{
-          barcodeTypes: ["qr"],
-        }} /* :contentReference[oaicite:1]{index=1} */
-        onBarcodeScanned={({ data }) => handleScanned(data)}
+        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+        // On ne passe plus data ici, on déclenche toujours SIGNIN_URL
+        onBarcodeScanned={() => handleScanned()}
       >
         <View style={styles.controls}>
           <Button
